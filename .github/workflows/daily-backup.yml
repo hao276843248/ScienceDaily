@@ -1,0 +1,49 @@
+name: 📅 ScienceDaily Backup
+
+# 兜底日报：当本机 Hermes cron 未运行时，由 GitHub Actions 云端定时生成。
+# 每天 09:00 (UTC+8) 触发；也支持手动 workflow_dispatch。
+
+on:
+  schedule:
+    - cron: "0 1 * * *"   # 01:00 UTC = 09:00 UTC+8
+  workflow_dispatch: {}    # 允许手动触发
+
+permissions:
+  contents: write   # 允许 push 回本仓库
+
+jobs:
+  generate-daily:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install requests
+
+      - name: Generate daily report
+        env:
+          # 用于避免重复/限流，可不填
+          GH_TOKEN_PLACEHOLDER: ""
+        run: |
+          python3 scripts/generate_daily.py
+          echo "今日报告生成完成，见 daily/"
+
+      - name: Commit & Push
+        run: |
+          git config user.name "ScienceDaily Bot"
+          git config user.email "bot@sciencedaily.local"
+          git add -A
+          # 若没有新变化则跳过推送（整天可能已经是本期了）
+          if git diff --cached --quiet; then
+            echo "无新内容，跳过推送"
+          else
+            git commit -m "📅 Update: $(date +%Y-%m-%d)"
+            git push origin main
+            echo "已推送兜底日报"
+          fi
