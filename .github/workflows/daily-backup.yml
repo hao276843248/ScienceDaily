@@ -5,7 +5,7 @@ name: 📅 ScienceDaily Backup
 
 on:
   schedule:
-    - cron: "0 1 * * *"   # 01:00 UTC = 09:00 UTC+8
+    - cron: "30 1 * * *"   # 01:30 UTC = 09:30 UTC+8（错开本机 Hermes 09:00，避免竞争）
   workflow_dispatch: {}    # 允许手动触发
 
 permissions:
