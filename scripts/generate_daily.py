@@ -3,7 +3,7 @@
 抓取 arXiv 最新论文 + 用 gpt-5.6-luna 生成中文日报。
 只使用真实抓取的论文，不编造。LLM key 从环境变量 LLM_API_KEY 读取（由 GitHub Secret 注入）。
 """
-import urllib.request, urllib.parse, json, os, re, sys
+import urllib.request, urllib.parse, json, os, re, sys, time
 from datetime import date, datetime, timedelta
 
 BASE = os.environ.get("LLM_API_BASE", "https://ai.bjxm.tech:8443")
@@ -16,10 +16,26 @@ MAX_AI = 3   # AI前沿篇数
 # ---------- 1. 抓取 arXiv 最新论文（真实数据） ----------
 def fetch_arxiv(category, max_results=12):
     """用 arXiv API 抓最新提交。返回 [(title, abs_url, date)]"""
-    url = ("http://export.arxiv.org/api/query?search_query=cat:%s"
+    # 注意：必须用 https —— http 会 301 重定向，在部分环境（如 GitHub Actions）重定向后
+    # 会被 arXiv 拒绝（HTTP 406 Not Acceptable）。UA 带 mailto 是 arXiv 官方推荐做法。
+    url = ("https://export.arxiv.org/api/query?search_query=cat:%s"
            "&sortBy=submittedDate&sortOrder=descending&max_results=%d" % (category, max_results))
-    req = urllib.request.Request(url, headers={"User-Agent": "ScienceDailyBot/1.0"})
-    xml = urllib.request.urlopen(req, timeout=30).read().decode("utf-8", "ignore")
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "ScienceDailyBot/1.0 (https://github.com/hao276843248/ScienceDaily; mailto:noreply@example.com)",
+        "Accept": "application/atom+xml",
+    })
+    last_err = None
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=40) as resp:
+                xml = resp.read().decode("utf-8", "ignore")
+            break
+        except Exception as ex:
+            last_err = ex
+            time.sleep(3 * (attempt + 1))
+    else:
+        print(f"[warn] fetch_arxiv({category}) 失败: {last_err}")
+        return []
     entries = re.findall(r"<entry>(.*?)</entry>", xml, re.S)
     out = []
     for e in entries:
